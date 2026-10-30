@@ -5,7 +5,7 @@
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 :root{--bg:#050a0d;--panel:#0a1518;--line:#174044;--cyan:#52f7df;--green:#b5ff70;--red:#ff405b;--paper:#eee3cc;--muted:#789395}
-*{box-sizing:border-box}html{scroll-behavior:auto;overscroll-behavior-y:none;overflow-anchor:none}body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:hidden;overscroll-behavior-y:none;overflow-anchor:none}main,.screen{overflow-anchor:none}
+*{box-sizing:border-box}html{scroll-behavior:auto;overscroll-behavior-y:none;overflow-anchor:auto}body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:hidden;overscroll-behavior-y:none;overflow-anchor:auto}main,.screen{overflow-anchor:auto}
 body:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:20;background:repeating-linear-gradient(to bottom,transparent 0,transparent 3px,rgba(0,0,0,.2) 4px);opacity:.45}
 #matrix{position:fixed;inset:0;width:100%;height:100%;opacity:.16;pointer-events:none}.noise{position:fixed;inset:0;pointer-events:none;z-index:18;box-shadow:inset 0 0 130px #000}
 header,.foot{position:relative;z-index:2;display:flex;justify-content:space-between;gap:12px;padding:18px 20px;font:10px 'Share Tech Mono',monospace;letter-spacing:.12em;color:var(--muted);border-bottom:1px solid #17404480}.logo{color:var(--cyan)}.status{display:flex;align-items:center;gap:7px}.led{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 12px var(--green);animation:pulse 1.5s infinite}
@@ -210,7 +210,7 @@ button.outline:hover,.outline:hover,.sound-toggle:hover{background:#153638;color
 
 /* ================= V6 // MEMORY CORE + CINEMATIC INTERFACE ================= */
 :root{--acid:#d5ff72;--violet:#a58bff;--glass:rgba(7,22,25,.78)}
-body{background:radial-gradient(ellipse at 50% -20%,#143438 0%,#071114 42%,#030708 100%);background-attachment:fixed}
+body{background:radial-gradient(ellipse at 50% -20%,#143438 0%,#071114 42%,#030708 100%);background-attachment:scroll}
 body:after{content:"";position:fixed;inset:0;pointer-events:none;z-index:1;opacity:.12;background-image:linear-gradient(rgba(101,255,232,.12) 1px,transparent 1px),linear-gradient(90deg,rgba(101,255,232,.12) 1px,transparent 1px);background-size:48px 48px;mask-image:linear-gradient(to bottom,black,transparent 85%)}
 header,main,.foot{position:relative;z-index:2}
 .screen:not(#start){position:relative;isolation:isolate}
@@ -478,9 +478,13 @@ if(photoRevealButton){
  },{once:false});
 }
 
-const c=document.getElementById('matrix'),ctx=c.getContext('2d');let drops=[],cols=0;
-function resize(){c.width=innerWidth*devicePixelRatio;c.height=innerHeight*devicePixelRatio;ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);cols=Math.ceil(innerWidth/18);drops=Array(cols).fill(1);}resize();addEventListener('resize',resize);
-const chars='01アイウエオ#$%MUC';setInterval(()=>{ctx.fillStyle='rgba(5,10,13,.09)';ctx.fillRect(0,0,innerWidth,innerHeight);ctx.fillStyle='#52f7df';ctx.font='12px monospace';drops.forEach((y,i)=>{ctx.fillText(chars[Math.random()*chars.length|0],i*18,y*18);if(y*18>innerHeight&&Math.random()>.978)drops[i]=0;drops[i]++;});},65);
+const c=document.getElementById('matrix'),ctx=c.getContext('2d',{alpha:true});let drops=[],cols=0,matrixDpr=1,lastMotion=0,resizeTimer;
+function resize(){matrixDpr=Math.min(window.devicePixelRatio||1,1.25);const w=window.innerWidth,h=window.innerHeight;c.width=Math.round(w*matrixDpr);c.height=Math.round(h*matrixDpr);c.style.width=w+'px';c.style.height=h+'px';ctx.setTransform(matrixDpr,0,0,matrixDpr,0,0);ctx.clearRect(0,0,w,h);cols=Math.ceil(w/22);drops=Array(cols).fill(1);}
+function scheduleResize(){clearTimeout(resizeTimer);resizeTimer=setTimeout(resize,120);}
+function markMotion(){lastMotion=performance.now();}
+resize();addEventListener('resize',scheduleResize,{passive:true});addEventListener('orientationchange',scheduleResize,{passive:true});
+addEventListener('touchstart',markMotion,{passive:true});addEventListener('touchmove',markMotion,{passive:true});addEventListener('wheel',markMotion,{passive:true});addEventListener('scroll',markMotion,{passive:true});
+const chars='01アイウエオ#$%MUC';setInterval(()=>{if(document.hidden||performance.now()-lastMotion<220)return;const w=window.innerWidth,h=window.innerHeight;ctx.fillStyle='rgba(5,10,13,.12)';ctx.fillRect(0,0,w,h);ctx.fillStyle='#52f7df';ctx.font='12px monospace';drops.forEach((y,i)=>{ctx.fillText(chars[Math.random()*chars.length|0],i*22,y*18);if(y*18>h&&Math.random()>.978)drops[i]=0;drops[i]++;});},100);
 
 
 /* V6 // Persistent mission progress. Static-hosting safe. */
