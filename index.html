@@ -303,7 +303,7 @@ let bootTimers=[],bootRunId=0;
 function runBoot(after){
   bootRunId++;const runId=bootRunId;
   bootTimers.forEach(clearTimeout);bootTimers=[];
-  bootOverlay.classList.remove('done');document.body.style.overflow='hidden';
+  bootOverlay.classList.remove('done');
   bootLog.innerHTML='&gt; avvio ambiente sicuro...';bootFill.style.width='0%';bootPercent.textContent='INIZIALIZZAZIONE 00%';
   const lines=[
     {t:280,s:'> verifica integrità del dossier...',p:18},
@@ -324,7 +324,7 @@ function runBoot(after){
 }
 function finishBoot(runId,after){
  if(runId!==bootRunId)return;
- bootOverlay.classList.add('done');document.body.style.overflow='';
+ bootOverlay.classList.add('done');
  if(typeof after==='function')after();
 }
 bootSkip.addEventListener('click',()=>{bootRunId++;bootTimers.forEach(clearTimeout);bootTimers=[];finishBoot(bootRunId);});
