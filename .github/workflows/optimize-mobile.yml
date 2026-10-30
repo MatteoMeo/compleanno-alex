@@ -1,4 +1,4 @@
-name: Restore full visual design and prepare scroll diagnosis
+name: Restore full visual design and prepare scroll diagnosis # preserve all effects
 
 on:
   push:
