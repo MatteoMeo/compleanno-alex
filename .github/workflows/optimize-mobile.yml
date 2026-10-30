@@ -1,4 +1,4 @@
-name: Restore full visual design and prepare scroll diagnosis # preserve all effects
+name: Restore full visual design and prepare scroll diagnosis
 
 on:
   push:
@@ -19,65 +19,45 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - name: Restore visual effects without changing page content
+      - name: Fix boot overlay scroll handling without changing the design
         shell: bash
         run: |
           python3 <<'PY'
           from pathlib import Path
-          import re
 
           path = Path("index.html")
           source = path.read_text(encoding="utf-8")
 
-          # Remove only the previous touch-only override that hid effects and disabled animations.
-          pattern = r'\n\s*/\* MOBILE NATIVE SCROLL \+ COMPOSITOR STABILITY \*/\s*@media \(max-width: 900px\) and \(pointer: coarse\) \{.*?\n\}\s*(?=</style>)'
-          source, removed = re.subn(pattern, "\n", source, count=1, flags=re.S)
-          if removed != 1:
-              raise SystemExit(f"ABORT: expected exactly one previous mobile override, removed {removed}")
-
-          # Restore the original 3D perspective used by the screen entrance animation.
-          source, perspective = re.subn(r'main\{perspective:none\}', 'main{perspective:1200px}', source, count=1)
-          if perspective != 1:
-              raise SystemExit(f"ABORT: expected one perspective override, found {perspective}")
-
-          # Keep a single, predictable document scroll root; don't force body into a second scroll container.
-          old_root = "html{scroll-behavior:auto;overflow-x:clip;overscroll-behavior-y:auto;overflow-anchor:auto}body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:clip;overflow-y:visible;overscroll-behavior-y:auto;overflow-anchor:auto}main,.screen{overflow-anchor:auto}"
-          new_root = "html{scroll-behavior:auto;overscroll-behavior-y:auto;overflow-anchor:auto}body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:clip;overscroll-behavior-y:auto;overflow-anchor:auto}main,.screen{overflow-anchor:auto}"
-          if source.count(old_root) != 1:
-              raise SystemExit(f"ABORT: expected one root scroll declaration, found {source.count(old_root)}")
-          source = source.replace(old_root, new_root, 1)
-
-          # Do not toggle body overflow during the boot overlay: on Android this can
-          # reset the document scroll position when the overlay finishes.
+          # The fixed boot overlay already covers the viewport. Locking body overflow
+          # is unnecessary and can reset Android's document scroll when it disappears.
           boot_lock = "bootOverlay.classList.remove('done');document.body.style.overflow='hidden';"
           boot_unlock = "bootOverlay.classList.add('done');document.body.style.overflow='';"
           if source.count(boot_lock) != 1:
               raise SystemExit(f"ABORT: expected one boot scroll lock, found {source.count(boot_lock)}")
           if source.count(boot_unlock) != 1:
               raise SystemExit(f"ABORT: expected one boot scroll unlock, found {source.count(boot_unlock)}")
+
           source = source.replace(boot_lock, "bootOverlay.classList.remove('done');", 1)
           source = source.replace(boot_unlock, "bootOverlay.classList.add('done');", 1)
 
-          # Confirm Matrix, texture layers, and screen animations remain enabled.
+          # Guard against accidentally stripping the site's signature visual layers.
           checks = [
               ("#matrix{position:fixed", "Matrix canvas"),
-              ("body:before{content:", "scanline texture"),
               (".noise{position:fixed", "noise/vignette layer"),
               (".screen:not(.hidden){animation:screenIn", "screen entrance animation"),
               ("main{perspective:1200px}", "3D screen perspective"),
           ]
           for token, label in checks:
               if token not in source:
-                  raise SystemExit(f"ABORT: {label} was not restored")
-          if "MOBILE NATIVE SCROLL + COMPOSITOR STABILITY" in source:
-              raise SystemExit("ABORT: destructive mobile override remains")
-          if source.count("</style>") != 1:
-              raise SystemExit("ABORT: style boundary validation failed")
+                  raise SystemExit(f"ABORT: {label} is missing; no changes written")
+
+          if boot_lock in source or boot_unlock in source:
+              raise SystemExit("ABORT: boot scroll lock remains")
 
           path.write_text(source, encoding="utf-8")
-          print("Restored Matrix, texture layers, blur/entrance animations and 3D perspective.")
+          print("Removed only the boot overlay body overflow toggle; all visual layers remain intact.")
           PY
-      - name: Commit restored design
+      - name: Commit scroll fix
         run: |
           if git diff --quiet -- index.html; then
             echo "No changes required."
@@ -86,5 +66,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add index.html
-          git commit -m "Restore full mobile visual effects"
+          git commit -m "Prevent boot overlay from resetting mobile scroll"
           git push origin HEAD:main
