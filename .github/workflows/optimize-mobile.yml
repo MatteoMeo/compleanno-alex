@@ -39,14 +39,14 @@ jobs:
           # Restore the original document scrolling declarations from before the
           # over-aggressive mobile patch; keep the site's original visual layers.
           replacements = [
-              (
-                  "html{scroll-behavior:auto;overflow-x:clip;overscroll-behavior-y:auto;overflow-anchor:auto}",
-                  "html{scroll-behavior:auto;overscroll-behavior-y:none;overflow-anchor:auto}"
-              ),
-              (
-                  "body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:clip;overscroll-behavior-y:auto;overflow-anchor:auto}",
-                  "body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:hidden;overscroll-behavior-y:none;overflow-anchor:auto}"
-              )
+              ("html{scroll-behavior:auto;overflow-x:clip;overscroll-behavior-y:auto;overflow-anchor:auto}",
+               "html{scroll-behavior:auto;overscroll-behavior-y:none;overflow-anchor:auto}"),
+              ("html{scroll-behavior:auto;overscroll-behavior-y:auto;overflow-anchor:auto}",
+               "html{scroll-behavior:auto;overscroll-behavior-y:none;overflow-anchor:auto}"),
+              ("body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:clip;overscroll-behavior-y:auto;overflow-anchor:auto}",
+               "body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:hidden;overscroll-behavior-y:none;overflow-anchor:auto}"),
+              ("body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:hidden;overscroll-behavior-y:auto;overflow-anchor:auto}",
+               "body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:hidden;overscroll-behavior-y:none;overflow-anchor:auto}")
           ]
           for old, new in replacements:
               if old in source:
