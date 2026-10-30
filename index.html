@@ -483,7 +483,7 @@ function scheduleResize(){clearTimeout(resizeTimer);resizeTimer=setTimeout(resiz
 function markMotion(){lastMotion=performance.now();}
 resize();addEventListener('resize',scheduleResize,{passive:true});addEventListener('orientationchange',scheduleResize,{passive:true});
 addEventListener('touchstart',markMotion,{passive:true});addEventListener('touchmove',markMotion,{passive:true});addEventListener('wheel',markMotion,{passive:true});addEventListener('scroll',markMotion,{passive:true});
-const chars='01アイウエオ#$%MUC';setInterval(()=>{if(document.hidden||performance.now()-lastMotion<220)return;const w=window.innerWidth,h=window.innerHeight;ctx.fillStyle='rgba(5,10,13,.12)';ctx.fillRect(0,0,w,h);ctx.fillStyle='#52f7df';ctx.font='12px monospace';drops.forEach((y,i)=>{ctx.fillText(chars[Math.random()*chars.length|0],i*22,y*18);if(y*18>h&&Math.random()>.978)drops[i]=0;drops[i]++;});},100);
+const chars='01アイウエオ#$%MUC';setInterval(()=>{if(document.hidden)return;const w=window.innerWidth,h=window.innerHeight;ctx.fillStyle='rgba(5,10,13,.12)';ctx.fillRect(0,0,w,h);ctx.fillStyle='#52f7df';ctx.font='12px monospace';drops.forEach((y,i)=>{ctx.fillText(chars[Math.random()*chars.length|0],i*22,y*18);if(y*18>h&&Math.random()>.978)drops[i]=0;drops[i]++;});},100);
 
 
 /* V6 // Persistent mission progress. Static-hosting safe. */
