@@ -1,0 +1,73 @@
+name: Mobile scroll and background stability fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/optimize-mobile.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-site:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout latest main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Apply guarded mobile performance patch
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path("index.html")
+          source = path.read_text(encoding="utf-8")
+
+          old_css = "*{box-sizing:border-box}html{scroll-behavior:auto;overscroll-behavior-y:none;overflow-anchor:none}body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:hidden;overscroll-behavior-y:none;overflow-anchor:none}main,.screen{overflow-anchor:none}"
+          new_css = "*{box-sizing:border-box}html{scroll-behavior:auto;overscroll-behavior-y:none;overflow-anchor:auto}body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:hidden;overscroll-behavior-y:none;overflow-anchor:auto}main,.screen{overflow-anchor:auto}"
+          old_bg = "body{background:radial-gradient(ellipse at 50% -20%,#143438 0%,#071114 42%,#030708 100%);background-attachment:fixed}"
+          new_bg = "body{background:radial-gradient(ellipse at 50% -20%,#143438 0%,#071114 42%,#030708 100%);background-attachment:scroll}"
+          old_matrix = """const c=document.getElementById('matrix'),ctx=c.getContext('2d');let drops=[],cols=0;
+          function resize(){c.width=innerWidth*devicePixelRatio;c.height=innerHeight*devicePixelRatio;ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);cols=Math.ceil(innerWidth/18);drops=Array(cols).fill(1);}resize();addEventListener('resize',resize);
+          const chars='01アイウエオ#$%MUC';setInterval(()=>{ctx.fillStyle='rgba(5,10,13,.09)';ctx.fillRect(0,0,innerWidth,innerHeight);ctx.fillStyle='#52f7df';ctx.font='12px monospace';drops.forEach((y,i)=>{ctx.fillText(chars[Math.random()*chars.length|0],i*18,y*18);if(y*18>innerHeight&&Math.random()>.978)drops[i]=0;drops[i]++;});},65);"""
+          new_matrix = """const c=document.getElementById('matrix'),ctx=c.getContext('2d',{alpha:true});let drops=[],cols=0,matrixDpr=1,lastMotion=0,resizeTimer;
+          function resize(){matrixDpr=Math.min(window.devicePixelRatio||1,1.25);const w=window.innerWidth,h=window.innerHeight;c.width=Math.round(w*matrixDpr);c.height=Math.round(h*matrixDpr);c.style.width=w+'px';c.style.height=h+'px';ctx.setTransform(matrixDpr,0,0,matrixDpr,0,0);ctx.clearRect(0,0,w,h);cols=Math.ceil(w/22);drops=Array(cols).fill(1);}
+          function scheduleResize(){clearTimeout(resizeTimer);resizeTimer=setTimeout(resize,120);}
+          function markMotion(){lastMotion=performance.now();}
+          resize();addEventListener('resize',scheduleResize,{passive:true});addEventListener('orientationchange',scheduleResize,{passive:true});
+          addEventListener('touchstart',markMotion,{passive:true});addEventListener('touchmove',markMotion,{passive:true});addEventListener('wheel',markMotion,{passive:true});addEventListener('scroll',markMotion,{passive:true});
+          const chars='01アイウエオ#$%MUC';setInterval(()=>{if(document.hidden||performance.now()-lastMotion<220)return;const w=window.innerWidth,h=window.innerHeight;ctx.fillStyle='rgba(5,10,13,.12)';ctx.fillRect(0,0,w,h);ctx.fillStyle='#52f7df';ctx.font='12px monospace';drops.forEach((y,i)=>{ctx.fillText(chars[Math.random()*chars.length|0],i*22,y*18);if(y*18>h&&Math.random()>.978)drops[i]=0;drops[i]++;});},100);"""
+
+          replacements = [(old_css, new_css, "scroll anchoring"), (old_bg, new_bg, "fixed background"), (old_matrix, new_matrix, "matrix canvas")]
+          for old, new, label in replacements:
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"ABORT: expected exactly one {label} block, found {count}; no changes written")
+              source = source.replace(old, new, 1)
+
+          if "overflow-anchor:none" in source or "background-attachment:fixed" in source:
+              raise SystemExit("ABORT: old unstable CSS remains")
+          if "matrixDpr=Math.min(window.devicePixelRatio||1,1.25)" not in source:
+              raise SystemExit("ABORT: optimized matrix block missing")
+          if not source.lstrip().lower().startswith("<!doctype html>") or not source.rstrip().lower().endswith("</body></html>"):
+              raise SystemExit("ABORT: HTML boundary validation failed")
+
+          path.write_text(source, encoding="utf-8")
+          print(f"Patched {path}; {len(source)} characters; all guarded checks passed.")
+          PY
+      - name: Commit optimized site
+        run: |
+          if git diff --quiet -- index.html; then
+            echo "No changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Fix mobile scroll stability and background rendering"
+          git push origin HEAD:main
