@@ -47,6 +47,17 @@ jobs:
               raise SystemExit(f"ABORT: expected one root scroll declaration, found {source.count(old_root)}")
           source = source.replace(old_root, new_root, 1)
 
+          # Do not toggle body overflow during the boot overlay: on Android this can
+          # reset the document scroll position when the overlay finishes.
+          boot_lock = "bootOverlay.classList.remove('done');document.body.style.overflow='hidden';"
+          boot_unlock = "bootOverlay.classList.add('done');document.body.style.overflow='';"
+          if source.count(boot_lock) != 1:
+              raise SystemExit(f"ABORT: expected one boot scroll lock, found {source.count(boot_lock)}")
+          if source.count(boot_unlock) != 1:
+              raise SystemExit(f"ABORT: expected one boot scroll unlock, found {source.count(boot_unlock)}")
+          source = source.replace(boot_lock, "bootOverlay.classList.remove('done');", 1)
+          source = source.replace(boot_unlock, "bootOverlay.classList.add('done');", 1)
+
           # Confirm Matrix, texture layers, and screen animations remain enabled.
           checks = [
               ("#matrix{position:fixed", "Matrix canvas"),
