@@ -5,7 +5,7 @@
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 :root{--bg:#050a0d;--panel:#0a1518;--line:#174044;--cyan:#52f7df;--green:#b5ff70;--red:#ff405b;--paper:#eee3cc;--muted:#789395}
-*{box-sizing:border-box}html{scroll-behavior:auto;overscroll-behavior-y:none;overflow-anchor:auto}body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:hidden;overscroll-behavior-y:none;overflow-anchor:auto}main,.screen{overflow-anchor:auto}
+*{box-sizing:border-box}html{scroll-behavior:auto;overscroll-behavior-y:auto;overflow-anchor:auto}body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:hidden;overscroll-behavior-y:auto;overflow-anchor:auto}main,.screen{overflow-anchor:auto}
 body:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:20;background:repeating-linear-gradient(to bottom,transparent 0,transparent 3px,rgba(0,0,0,.2) 4px);opacity:.45}
 #matrix{position:fixed;inset:0;width:100%;height:100%;opacity:.16;pointer-events:none}.noise{position:fixed;inset:0;pointer-events:none;z-index:18;box-shadow:inset 0 0 130px #000}
 header,.foot{position:relative;z-index:2;display:flex;justify-content:space-between;gap:12px;padding:18px 20px;font:10px 'Share Tech Mono',monospace;letter-spacing:.12em;color:var(--muted);border-bottom:1px solid #17404480}.logo{color:var(--cyan)}.status{display:flex;align-items:center;gap:7px}.led{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 12px var(--green);animation:pulse 1.5s infinite}
@@ -483,6 +483,40 @@ function scheduleResize(){clearTimeout(resizeTimer);resizeTimer=setTimeout(resiz
 function markMotion(){lastMotion=performance.now();}
 resize();addEventListener('resize',scheduleResize,{passive:true});addEventListener('orientationchange',scheduleResize,{passive:true});
 addEventListener('touchstart',markMotion,{passive:true});addEventListener('touchmove',markMotion,{passive:true});addEventListener('wheel',markMotion,{passive:true});addEventListener('scroll',markMotion,{passive:true});
+/* MOBILE IDLE SCROLL-JUMP RECOVERY */
+(() => {
+  let lastY = window.scrollY;
+  let lastScreen = currentScreen;
+  let lastInputAt = performance.now();
+  let recovering = false;
+  const noteInput = () => { lastInputAt = performance.now(); };
+  ['touchstart', 'touchmove', 'wheel', 'pointerdown', 'keydown'].forEach(type =>
+    addEventListener(type, noteInput, { passive: true })
+  );
+  addEventListener('scroll', () => {
+    const y = window.scrollY;
+    if (currentScreen !== lastScreen) {
+      lastScreen = currentScreen;
+      lastY = y;
+      return;
+    }
+    if (!recovering && lastY > 80 && y < 8 &&
+        performance.now() - lastInputAt > 900) {
+      recovering = true;
+      const targetY = lastY;
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: targetY, left: 0, behavior: 'auto' });
+        requestAnimationFrame(() => {
+          recovering = false;
+          lastY = window.scrollY;
+        });
+      });
+      return;
+    }
+    lastY = y;
+  }, { passive: true });
+})();
+
 const chars='01アイウエオ#$%MUC';setInterval(()=>{if(document.hidden)return;const w=window.innerWidth,h=window.innerHeight;ctx.fillStyle='rgba(5,10,13,.12)';ctx.fillRect(0,0,w,h);ctx.fillStyle='#52f7df';ctx.font='12px monospace';drops.forEach((y,i)=>{ctx.fillText(chars[Math.random()*chars.length|0],i*22,y*18);if(y*18>h&&Math.random()>.978)drops[i]=0;drops[i]++;});},100);
 
 
