@@ -19,7 +19,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - name: Restore all effects and keep Matrix animation continuous
+      - name: Restore all effects and add a focused mobile scroll recovery
         shell: bash
         run: |
           python3 <<'PY'
@@ -28,44 +28,85 @@ jobs:
           path = Path("index.html")
           source = path.read_text(encoding="utf-8")
 
-          # Remove only the previous mobile-effects suppression block. This restores
-          # the fixed scanlines/vignette, Matrix canvas, screen transitions and 3D effects.
+          # Remove only the previous mobile-effects suppression block. Keep the
+          # original fixed scanlines/vignette, Matrix canvas, transitions and 3D.
           start_marker = "/* MOBILE NATIVE SCROLL + COMPOSITOR STABILITY */"
           if start_marker in source:
               start = source.index(start_marker)
               end = source.index("</style>", start)
               source = source[:start] + source[end:]
 
-          # Restore the original document scrolling declarations from before the
-          # over-aggressive mobile patch; keep the site's original visual layers.
-          replacements = [
-              ("html{scroll-behavior:auto;overflow-x:clip;overscroll-behavior-y:auto;overflow-anchor:auto}",
-               "html{scroll-behavior:auto;overscroll-behavior-y:none;overflow-anchor:auto}"),
-              ("html{scroll-behavior:auto;overscroll-behavior-y:auto;overflow-anchor:auto}",
-               "html{scroll-behavior:auto;overscroll-behavior-y:none;overflow-anchor:auto}"),
-              ("body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:clip;overscroll-behavior-y:auto;overflow-anchor:auto}",
-               "body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:hidden;overscroll-behavior-y:none;overflow-anchor:auto}"),
-              ("body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:hidden;overscroll-behavior-y:auto;overflow-anchor:auto}",
-               "body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:hidden;overscroll-behavior-y:none;overflow-anchor:auto}")
-          ]
-          for old, new in replacements:
-              if old in source:
-                  source = source.replace(old, new, 1)
+          # Restore native touch overscroll. Do not change the visual layers.
+          source = source.replace(
+              "html{scroll-behavior:auto;overscroll-behavior-y:none;overflow-anchor:auto}",
+              "html{scroll-behavior:auto;overscroll-behavior-y:auto;overflow-anchor:auto}", 1
+          )
+          source = source.replace(
+              "body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:hidden;overscroll-behavior-y:none;overflow-anchor:auto}",
+              "body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:hidden;overscroll-behavior-y:auto;overflow-anchor:auto}", 1
+          )
 
-          # The boot overlay is fixed-position and does not need to lock body overflow.
-          # Toggling body overflow on startup can reset the scroll container on mobile.
-          boot_lock = "bootOverlay.classList.remove('done');document.body.style.overflow='hidden';"
-          boot_unlock = "bootOverlay.classList.add('done');document.body.style.overflow='';"
-          source = source.replace(boot_lock, "bootOverlay.classList.remove('done');", 1)
-          source = source.replace(boot_unlock, "bootOverlay.classList.add('done');", 1)
+          # The fixed boot overlay does not need to lock document scrolling.
+          source = source.replace(
+              "bootOverlay.classList.remove('done');document.body.style.overflow='hidden';",
+              "bootOverlay.classList.remove('done');", 1
+          )
+          source = source.replace(
+              "bootOverlay.classList.add('done');document.body.style.overflow='';",
+              "bootOverlay.classList.add('done');", 1
+          )
 
-          # The Matrix animation previously stopped during touch/scroll and restarted
-          # 220 ms after touch ended. Keep it running continuously: no delayed restart,
-          # while preserving the original animation and all visual details.
-          old_timer = "setInterval(()=>{if(document.hidden||performance.now()-lastMotion<220)return;"
-          new_timer = "setInterval(()=>{if(document.hidden)return;"
-          if old_timer in source:
-              source = source.replace(old_timer, new_timer, 1)
+          # Keep the Matrix animation running continuously. Restarting its
+          # full-screen canvas shortly after touch-end can provoke compositor bugs.
+          source = source.replace(
+              "setInterval(()=>{if(document.hidden||performance.now()-lastMotion<220)return;",
+              "setInterval(()=>{if(document.hidden)return;", 1
+          )
+
+          # Narrow recovery for the reported failure: if Android unexpectedly
+          # snaps the document to y=0 after the gesture has ended, restore the
+          # last real scroll position. Intentional screen changes and user input
+          # are excluded; this does not disable or replace any visual effect.
+          guard_marker = "/* MOBILE IDLE SCROLL-JUMP RECOVERY */"
+          guard = """\n/* MOBILE IDLE SCROLL-JUMP RECOVERY */
+          (() => {
+            let lastY = window.scrollY;
+            let lastScreen = currentScreen;
+            let lastInputAt = performance.now();
+            let recovering = false;
+            const noteInput = () => { lastInputAt = performance.now(); };
+            ['touchstart', 'touchmove', 'wheel', 'pointerdown', 'keydown'].forEach(type =>
+              addEventListener(type, noteInput, { passive: true })
+            );
+            addEventListener('scroll', () => {
+              const y = window.scrollY;
+              if (currentScreen !== lastScreen) {
+                lastScreen = currentScreen;
+                lastY = y;
+                return;
+              }
+              if (!recovering && lastY > 80 && y < 8 &&
+                  performance.now() - lastInputAt > 900) {
+                recovering = true;
+                const targetY = lastY;
+                requestAnimationFrame(() => {
+                  window.scrollTo({ top: targetY, left: 0, behavior: 'auto' });
+                  requestAnimationFrame(() => {
+                    recovering = false;
+                    lastY = window.scrollY;
+                  });
+                });
+                return;
+              }
+              lastY = y;
+            }, { passive: true });
+          })();
+          """
+          if guard_marker not in source:
+              anchor = "addEventListener('scroll',markMotion,{passive:true});"
+              if anchor not in source:
+                  raise SystemExit("ABORT: expected Matrix scroll listener not found")
+              source = source.replace(anchor, anchor + guard, 1)
 
           required = [
               ("#matrix{position:fixed", "fixed Matrix canvas"),
@@ -73,15 +114,14 @@ jobs:
               ("body:before{content:", "scanline overlay"),
               (".screen:not(.hidden){animation:", "screen transition"),
               ("main{perspective:1200px}", "3D perspective"),
+              (guard_marker, "idle scroll recovery"),
           ]
           for token, label in required:
               if token not in source:
-                  raise SystemExit(f"ABORT: original {label} not found")
-          if start_marker in source:
-              raise SystemExit("ABORT: mobile suppression block still present")
+                  raise SystemExit(f"ABORT: {label} missing; no changes written")
 
           path.write_text(source, encoding="utf-8")
-          print("Original visual effects restored; Matrix no longer pauses and restarts after touch scrolling.")
+          print("Full visual design retained; native overscroll restored and idle top-snap recovery installed.")
           PY
       - name: Commit focused restoration and scroll fix
         run: |
@@ -92,5 +132,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add index.html
-          git commit -m "Restore full design and prevent delayed mobile scroll jump"
+          git commit -m "Preserve full design and recover delayed mobile scroll jumps"
           git push origin HEAD:main
