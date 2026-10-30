@@ -1,4 +1,4 @@
-name: Restore full visual design and stabilize Matrix after scroll
+name: Restore original visual design and fix delayed mobile scroll jump
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - name: Keep full design and prevent Matrix restart during scroll
+      - name: Restore all effects and keep Matrix animation continuous
         shell: bash
         run: |
           python3 <<'PY'
@@ -28,43 +28,62 @@ jobs:
           path = Path("index.html")
           source = path.read_text(encoding="utf-8")
 
-          # The fixed boot overlay already covers the viewport. Locking body overflow
-          # is unnecessary and can reset Android's document scroll when it disappears.
+          # Remove only the previous mobile-effects suppression block. This restores
+          # the fixed scanlines/vignette, Matrix canvas, screen transitions and 3D effects.
+          start_marker = "/* MOBILE NATIVE SCROLL + COMPOSITOR STABILITY */"
+          if start_marker in source:
+              start = source.index(start_marker)
+              end = source.index("</style>", start)
+              source = source[:start] + source[end:]
+
+          # Restore the original document scrolling declarations from before the
+          # over-aggressive mobile patch; keep the site's original visual layers.
+          replacements = [
+              (
+                  "html{scroll-behavior:auto;overflow-x:clip;overscroll-behavior-y:auto;overflow-anchor:auto}",
+                  "html{scroll-behavior:auto;overscroll-behavior-y:none;overflow-anchor:auto}"
+              ),
+              (
+                  "body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:clip;overscroll-behavior-y:auto;overflow-anchor:auto}",
+                  "body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:hidden;overscroll-behavior-y:none;overflow-anchor:auto}"
+              )
+          ]
+          for old, new in replacements:
+              if old in source:
+                  source = source.replace(old, new, 1)
+
+          # The boot overlay is fixed-position and does not need to lock body overflow.
+          # Toggling body overflow on startup can reset the scroll container on mobile.
           boot_lock = "bootOverlay.classList.remove('done');document.body.style.overflow='hidden';"
           boot_unlock = "bootOverlay.classList.add('done');document.body.style.overflow='';"
-          if boot_lock in source:
-              source = source.replace(boot_lock, "bootOverlay.classList.remove('done');", 1)
-          if boot_unlock in source:
-              source = source.replace(boot_unlock, "bootOverlay.classList.add('done');", 1)
+          source = source.replace(boot_lock, "bootOverlay.classList.remove('done');", 1)
+          source = source.replace(boot_unlock, "bootOverlay.classList.add('done');", 1)
 
-          # Keep every signature visual layer and transition enabled.
-          checks = [
-              ("#matrix{position:fixed", "Matrix canvas"),
-              (".noise{position:fixed", "noise/vignette layer"),
-              (".screen:not(.hidden){animation:screenIn", "screen entrance animation"),
-              ("main{perspective:1200px}", "3D screen perspective"),
+          # The Matrix animation previously stopped during touch/scroll and restarted
+          # 220 ms after touch ended. Keep it running continuously: no delayed restart,
+          # while preserving the original animation and all visual details.
+          old_timer = "setInterval(()=>{if(document.hidden||performance.now()-lastMotion<220)return;"
+          new_timer = "setInterval(()=>{if(document.hidden)return;"
+          if old_timer in source:
+              source = source.replace(old_timer, new_timer, 1)
+
+          required = [
+              ("#matrix{position:fixed", "fixed Matrix canvas"),
+              (".noise{position:fixed", "fixed vignette"),
+              ("body:before{content:", "scanline overlay"),
+              (".screen:not(.hidden){animation:", "screen transition"),
+              ("main{perspective:1200px}", "3D perspective"),
           ]
-          for token, label in checks:
+          for token, label in required:
               if token not in source:
-                  raise SystemExit(f"ABORT: {label} is missing; no changes written")
-
-          # The Matrix timer used to pause while the user scrolled and restart
-          # 220 ms after touch ended. That restart is the strongest match for the
-          # delayed jump reported on Android. Keep the original rain animation
-          # running continuously (also while scrolling) so there is no restart.
-          old = "setInterval(()=>{if(document.hidden||performance.now()-lastMotion<220)return;"
-          new = "setInterval(()=>{if(document.hidden)return;"
-          if source.count(old) != 1:
-              raise SystemExit(f"ABORT: expected one Matrix timer guard, found {source.count(old)}")
-          source = source.replace(old, new, 1)
-
-          if "display:none !important" in source or "animation:none !important" in source:
-              raise SystemExit("ABORT: a mobile visual-effects suppression rule was found")
+                  raise SystemExit(f"ABORT: original {label} not found")
+          if start_marker in source:
+              raise SystemExit("ABORT: mobile suppression block still present")
 
           path.write_text(source, encoding="utf-8")
-          print("Full visual design preserved; Matrix animation no longer restarts after the first user scroll.")
+          print("Original visual effects restored; Matrix no longer pauses and restarts after touch scrolling.")
           PY
-      - name: Commit focused scroll fix
+      - name: Commit focused restoration and scroll fix
         run: |
           if git diff --quiet -- index.html; then
             echo "No changes required."
@@ -73,5 +92,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add index.html
-          git commit -m "Prevent Matrix animation from resetting mobile scroll"
+          git commit -m "Restore full design and prevent delayed mobile scroll jump"
           git push origin HEAD:main
