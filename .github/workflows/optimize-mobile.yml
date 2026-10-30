@@ -1,4 +1,4 @@
-name: Restore full visual design and prepare scroll diagnosis
+name: Restore full visual design and stabilize Matrix after scroll
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  restore-design:
+  restore-design-and-fix-scroll:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout latest main
@@ -19,7 +19,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - name: Fix boot overlay scroll handling without changing the design
+      - name: Keep full design and prevent Matrix restart during scroll
         shell: bash
         run: |
           python3 <<'PY'
@@ -32,15 +32,12 @@ jobs:
           # is unnecessary and can reset Android's document scroll when it disappears.
           boot_lock = "bootOverlay.classList.remove('done');document.body.style.overflow='hidden';"
           boot_unlock = "bootOverlay.classList.add('done');document.body.style.overflow='';"
-          if source.count(boot_lock) != 1:
-              raise SystemExit(f"ABORT: expected one boot scroll lock, found {source.count(boot_lock)}")
-          if source.count(boot_unlock) != 1:
-              raise SystemExit(f"ABORT: expected one boot scroll unlock, found {source.count(boot_unlock)}")
+          if boot_lock in source:
+              source = source.replace(boot_lock, "bootOverlay.classList.remove('done');", 1)
+          if boot_unlock in source:
+              source = source.replace(boot_unlock, "bootOverlay.classList.add('done');", 1)
 
-          source = source.replace(boot_lock, "bootOverlay.classList.remove('done');", 1)
-          source = source.replace(boot_unlock, "bootOverlay.classList.add('done');", 1)
-
-          # Guard against accidentally stripping the site's signature visual layers.
+          # Keep every signature visual layer and transition enabled.
           checks = [
               ("#matrix{position:fixed", "Matrix canvas"),
               (".noise{position:fixed", "noise/vignette layer"),
@@ -51,13 +48,37 @@ jobs:
               if token not in source:
                   raise SystemExit(f"ABORT: {label} is missing; no changes written")
 
-          if boot_lock in source or boot_unlock in source:
-              raise SystemExit("ABORT: boot scroll lock remains")
+          # The Matrix timer currently pauses during touch/scroll, then resumes 220 ms
+          # after the finger is lifted. On mobile that delayed restart coincides with
+          # the reported jump. Keep the rain effect until the first real scroll, then
+          # freeze its last rendered frame instead of restarting it mid-page.
+          replacements = [
+              (
+                  "let drops=[],cols=0,matrixDpr=1,lastMotion=0,resizeTimer;",
+                  "let drops=[],cols=0,matrixDpr=1,lastMotion=0,resizeTimer,matrixPaused=false;"
+              ),
+              (
+                  "function markMotion(){lastMotion=performance.now();}",
+                  "function markMotion(event){lastMotion=performance.now();if(event&&(event.type==='scroll'||event.type==='touchmove'||event.type==='wheel'))matrixPaused=true;}"
+              ),
+              (
+                  "setInterval(()=>{if(document.hidden||performance.now()-lastMotion<220)return;",
+                  "setInterval(()=>{if(document.hidden||matrixPaused||performance.now()-lastMotion<220)return;"
+              ),
+          ]
+          for old, new in replacements:
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"ABORT: expected one occurrence of {old!r}, found {count}")
+              source = source.replace(old, new, 1)
+
+          if "display:none !important" in source or "animation:none !important" in source:
+              raise SystemExit("ABORT: a mobile visual-effects suppression rule was found")
 
           path.write_text(source, encoding="utf-8")
-          print("Removed only the boot overlay body overflow toggle; all visual layers remain intact.")
+          print("Full visual design preserved; Matrix animation no longer restarts after the first user scroll.")
           PY
-      - name: Commit scroll fix
+      - name: Commit focused scroll fix
         run: |
           if git diff --quiet -- index.html; then
             echo "No changes required."
@@ -66,5 +87,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add index.html
-          git commit -m "Prevent boot overlay from resetting mobile scroll"
+          git commit -m "Prevent Matrix animation from resetting mobile scroll"
           git push origin HEAD:main
