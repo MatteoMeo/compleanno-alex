@@ -48,29 +48,15 @@ jobs:
               if token not in source:
                   raise SystemExit(f"ABORT: {label} is missing; no changes written")
 
-          # The Matrix timer currently pauses during touch/scroll, then resumes 220 ms
-          # after the finger is lifted. On mobile that delayed restart coincides with
-          # the reported jump. Keep the rain effect until the first real scroll, then
-          # freeze its last rendered frame instead of restarting it mid-page.
-          replacements = [
-              (
-                  "let drops=[],cols=0,matrixDpr=1,lastMotion=0,resizeTimer;",
-                  "let drops=[],cols=0,matrixDpr=1,lastMotion=0,resizeTimer,matrixPaused=false;"
-              ),
-              (
-                  "function markMotion(){lastMotion=performance.now();}",
-                  "function markMotion(event){lastMotion=performance.now();if(event&&(event.type==='scroll'||event.type==='touchmove'||event.type==='wheel'))matrixPaused=true;}"
-              ),
-              (
-                  "setInterval(()=>{if(document.hidden||performance.now()-lastMotion<220)return;",
-                  "setInterval(()=>{if(document.hidden||matrixPaused||performance.now()-lastMotion<220)return;"
-              ),
-          ]
-          for old, new in replacements:
-              count = source.count(old)
-              if count != 1:
-                  raise SystemExit(f"ABORT: expected one occurrence of {old!r}, found {count}")
-              source = source.replace(old, new, 1)
+          # The Matrix timer used to pause while the user scrolled and restart
+          # 220 ms after touch ended. That restart is the strongest match for the
+          # delayed jump reported on Android. Keep the original rain animation
+          # running continuously (also while scrolling) so there is no restart.
+          old = "setInterval(()=>{if(document.hidden||performance.now()-lastMotion<220)return;"
+          new = "setInterval(()=>{if(document.hidden)return;"
+          if source.count(old) != 1:
+              raise SystemExit(f"ABORT: expected one Matrix timer guard, found {source.count(old)}")
+          source = source.replace(old, new, 1)
 
           if "display:none !important" in source or "animation:none !important" in source:
               raise SystemExit("ABORT: a mobile visual-effects suppression rule was found")
