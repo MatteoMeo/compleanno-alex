@@ -1,0 +1,54 @@
+name: Apply Missione Monaco follow-up fixes
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/apply-missione-followup.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Patch site
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("index.html")
+          html = path.read_text(encoding="utf-8")
+
+          button = '<button class="outline" data-go="checklist">[ PIANO OPERATIVO ]</button>'
+          if html.count(button) != 1:
+              raise SystemExit(f"Expected one PIANO OPERATIVO button, found {html.count(button)}")
+          html = html.replace(button, "", 1)
+
+          old_css = "*{box-sizing:border-box}html{scroll-behavior:smooth;overscroll-behavior-y:none}body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:hidden;overscroll-behavior-y:none}"
+          new_css = "*{box-sizing:border-box}html{scroll-behavior:auto;overscroll-behavior-y:none;overflow-anchor:none}body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:hidden;overscroll-behavior-y:none;overflow-anchor:none}main,.screen{overflow-anchor:none}"
+          if html.count(old_css) != 1:
+              raise SystemExit(f"Expected one base CSS block, found {html.count(old_css)}")
+          html = html.replace(old_css, new_css, 1)
+
+          if html.count("main{perspective:1200px}") != 1:
+              raise SystemExit("Expected one main perspective rule")
+          html = html.replace("main{perspective:1200px}", "main{perspective:none}", 1)
+
+          if "PIANO OPERATIVO" in html or "overflow-anchor:none" not in html:
+              raise SystemExit("Post-patch validation failed")
+          path.write_text(html, encoding="utf-8")
+          PY
+      - name: Commit patch and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git rm .github/workflows/apply-missione-followup.yml
+          git commit -m "Remove operations shortcut and stabilize mobile scrolling"
+          git push
