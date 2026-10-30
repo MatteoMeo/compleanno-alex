@@ -5,7 +5,7 @@
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 :root{--bg:#050a0d;--panel:#0a1518;--line:#174044;--cyan:#52f7df;--green:#b5ff70;--red:#ff405b;--paper:#eee3cc;--muted:#789395}
-*{box-sizing:border-box}html{scroll-behavior:auto;overflow-x:clip;overscroll-behavior-y:auto;overflow-anchor:auto}body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:clip;overflow-y:visible;overscroll-behavior-y:auto;overflow-anchor:auto}main,.screen{overflow-anchor:auto}
+*{box-sizing:border-box}html{scroll-behavior:auto;overscroll-behavior-y:auto;overflow-anchor:auto}body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:clip;overscroll-behavior-y:auto;overflow-anchor:auto}main,.screen{overflow-anchor:auto}
 body:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:20;background:repeating-linear-gradient(to bottom,transparent 0,transparent 3px,rgba(0,0,0,.2) 4px);opacity:.45}
 #matrix{position:fixed;inset:0;width:100%;height:100%;opacity:.16;pointer-events:none}.noise{position:fixed;inset:0;pointer-events:none;z-index:18;box-shadow:inset 0 0 130px #000}
 header,.foot{position:relative;z-index:2;display:flex;justify-content:space-between;gap:12px;padding:18px 20px;font:10px 'Share Tech Mono',monospace;letter-spacing:.12em;color:var(--muted);border-bottom:1px solid #17404480}.logo{color:var(--cyan)}.status{display:flex;align-items:center;gap:7px}.led{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 12px var(--green);animation:pulse 1.5s infinite}
@@ -103,7 +103,7 @@ header{backdrop-filter:blur(14px);background:rgba(3,9,12,.76);border-bottom:1px 
 .status{letter-spacing:.13em}
 .led{box-shadow:0 0 12px var(--green);animation:ledPulse 1.8s ease-in-out infinite}
 @keyframes ledPulse{50%{opacity:.35;box-shadow:0 0 3px var(--green)}}
-main{perspective:none}
+main{perspective:1200px}
 .screen:not(.hidden){animation:screenIn .48s cubic-bezier(.2,.8,.2,1) both}
 @keyframes screenIn{from{opacity:0;transform:translateY(12px) rotateX(1deg);filter:blur(3px)}to{opacity:1;transform:translateY(0) rotateX(0);filter:blur(0)}}
 h1,h2{ text-shadow:0 0 28px rgba(82,247,223,.10)}
@@ -231,39 +231,6 @@ button{transition:transform .18s ease,box-shadow .18s ease,background .18s ease,
 @media(hover:hover) and (pointer:fine){.v6-console{transition:border-color .25s ease}.v6-console:hover{border-color:rgba(101,255,232,.48)}}
 @media(max-width:520px){.v6-console{padding:13px}.v6-console-grid{gap:8px}.v6-console-grid small{font-size:8px;line-height:1.4}}
 @media(prefers-reduced-motion:reduce){.screen{animation:none}.v6-meter i{transition:none}}
-
-
-/* MOBILE NATIVE SCROLL + COMPOSITOR STABILITY */
-@media (max-width: 900px) and (pointer: coarse) {
-  html {
-    overflow-x: clip !important;
-    overscroll-behavior-y: auto !important;
-    -webkit-overflow-scrolling: touch;
-  }
-  body {
-    position: relative;
-    overflow-x: clip !important;
-    overflow-y: visible !important;
-    overscroll-behavior-y: auto !important;
-    touch-action: pan-y pinch-zoom;
-    background-attachment: scroll !important;
-  }
-  /* Keep the cyberpunk texture, but avoid multiple viewport-fixed paint layers. */
-  body:before, body:after, .noise {
-    position: absolute !important;
-    inset: 0;
-  }
-  /* Matrix is decorative; its continuously repainted fixed canvas was competing with touch scrolling. */
-  #matrix { display: none !important; }
-  /* Avoid transformed/filtered full-page layers while the browser is compositing a touch scroll. */
-  main, .screen, .screen:not(.hidden) {
-    transform: none !important;
-    filter: none !important;
-    animation: none !important;
-    will-change: auto !important;
-  }
-}
-
 </style></head><body><div class="boot-overlay" id="boot-overlay" role="status" aria-live="polite">
   <div class="boot-panel">
     <div class="boot-brand"><span>◈ MEO//INTEL</span><span>SECURE BOOT v6.0</span></div>
