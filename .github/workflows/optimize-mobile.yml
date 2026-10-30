@@ -1,4 +1,4 @@
-name: Mobile scroll and background stability fix
+name: Restore full visual design and prepare scroll diagnosis
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  patch-site:
+  restore-design:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout latest main
@@ -19,90 +19,54 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - name: Apply guarded mobile viewport and compositor fix
+      - name: Restore visual effects without changing page content
         shell: bash
         run: |
           python3 <<'PY'
           from pathlib import Path
+          import re
 
           path = Path("index.html")
           source = path.read_text(encoding="utf-8")
 
-          marker = "/* MOBILE NATIVE SCROLL + COMPOSITOR STABILITY */"
-          if marker in source:
-              raise SystemExit("ABORT: mobile stability patch already exists; inspect current source before retrying")
+          # Remove only the previous touch-only override that hid effects and disabled animations.
+          pattern = r'\n\s*/\* MOBILE NATIVE SCROLL \+ COMPOSITOR STABILITY \*/\s*@media \(max-width: 900px\) and \(pointer: coarse\) \{.*?\n\}\s*(?=</style>)'
+          source, removed = re.subn(pattern, "\n", source, count=1, flags=re.S)
+          if removed != 1:
+              raise SystemExit(f"ABORT: expected exactly one previous mobile override, removed {removed}")
 
-          expected = [
-              ("overflow-x:hidden;overscroll-behavior-y:none;overflow-anchor:auto", "root scroll container declaration"),
-              ("background-attachment:scroll", "non-fixed background"),
-              ("#matrix{position:fixed", "matrix canvas"),
-              (".screen:not(.hidden){animation:screenIn", "screen transition")
+          # Restore the original 3D perspective used by the screen entrance animation.
+          source, perspective = re.subn(r'main\{perspective:none\}', 'main{perspective:1200px}', source, count=1)
+          if perspective != 1:
+              raise SystemExit(f"ABORT: expected one perspective override, found {perspective}")
+
+          # Keep a single, predictable document scroll root; don't force body into a second scroll container.
+          old_root = "html{scroll-behavior:auto;overflow-x:clip;overscroll-behavior-y:auto;overflow-anchor:auto}body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:clip;overflow-y:visible;overscroll-behavior-y:auto;overflow-anchor:auto}main,.screen{overflow-anchor:auto}"
+          new_root = "html{scroll-behavior:auto;overscroll-behavior-y:auto;overflow-anchor:auto}body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:clip;overscroll-behavior-y:auto;overflow-anchor:auto}main,.screen{overflow-anchor:auto}"
+          if source.count(old_root) != 1:
+              raise SystemExit(f"ABORT: expected one root scroll declaration, found {source.count(old_root)}")
+          source = source.replace(old_root, new_root, 1)
+
+          # Confirm Matrix, texture layers, and screen animations remain enabled.
+          checks = [
+              ("#matrix{position:fixed", "Matrix canvas"),
+              ("body:before{content:", "scanline texture"),
+              (".noise{position:fixed", "noise/vignette layer"),
+              (".screen:not(.hidden){animation:screenIn", "screen entrance animation"),
+              ("main{perspective:1200px}", "3D screen perspective"),
           ]
-          for token, label in expected:
-              if source.count(token) != 1:
-                  raise SystemExit(f"ABORT: expected one {label}, found {source.count(token)}")
-
-          # Keep the document itself as the native vertical scroller on Android.
-          source = source.replace(
-              "html{scroll-behavior:auto;overscroll-behavior-y:none;overflow-anchor:auto}",
-              "html{scroll-behavior:auto;overflow-x:clip;overscroll-behavior-y:auto;overflow-anchor:auto}",
-              1
-          )
-          source = source.replace(
-              "overflow-x:hidden;overscroll-behavior-y:none;overflow-anchor:auto",
-              "overflow-x:clip;overflow-y:visible;overscroll-behavior-y:auto;overflow-anchor:auto",
-              1
-          )
-
-          mobile_css = """
-          /* MOBILE NATIVE SCROLL + COMPOSITOR STABILITY */
-          @media (max-width: 900px) and (pointer: coarse) {
-            html {
-              overflow-x: clip !important;
-              overscroll-behavior-y: auto !important;
-              -webkit-overflow-scrolling: touch;
-            }
-            body {
-              position: relative;
-              overflow-x: clip !important;
-              overflow-y: visible !important;
-              overscroll-behavior-y: auto !important;
-              touch-action: pan-y pinch-zoom;
-              background-attachment: scroll !important;
-            }
-            /* Keep the cyberpunk texture, but avoid multiple viewport-fixed paint layers. */
-            body:before, body:after, .noise {
-              position: absolute !important;
-              inset: 0;
-            }
-            /* Matrix is decorative; its continuously repainted fixed canvas was competing with touch scrolling. */
-            #matrix { display: none !important; }
-            /* Avoid transformed/filtered full-page layers while the browser is compositing a touch scroll. */
-            main, .screen, .screen:not(.hidden) {
-              transform: none !important;
-              filter: none !important;
-              animation: none !important;
-              will-change: auto !important;
-            }
-          }
-          """
-
-          close_style = source.rfind("</style>")
-          if close_style < 0:
-              raise SystemExit("ABORT: closing style tag not found")
-          source = source[:close_style] + mobile_css + "\n" + source[close_style:]
-
-          if "overflow-x:hidden;overscroll-behavior-y:none;overflow-anchor:auto" in source:
-              raise SystemExit("ABORT: old body scroll container declaration remains")
-          if marker not in source or "#matrix { display: none !important; }" not in source:
-              raise SystemExit("ABORT: mobile compositor rules missing")
-          if source.count("</style>") != 1 or not source.lstrip().lower().startswith("<!doctype html>") or not source.rstrip().lower().endswith("</body></html>"):
-              raise SystemExit("ABORT: HTML boundary validation failed")
+          for token, label in checks:
+              if token not in source:
+                  raise SystemExit(f"ABORT: {label} was not restored")
+          if "MOBILE NATIVE SCROLL + COMPOSITOR STABILITY" in source:
+              raise SystemExit("ABORT: destructive mobile override remains")
+          if source.count("</style>") != 1:
+              raise SystemExit("ABORT: style boundary validation failed")
 
           path.write_text(source, encoding="utf-8")
-          print(f"Patched {path}; {len(source)} characters; guarded viewport/compositor checks passed.")
+          print("Restored Matrix, texture layers, blur/entrance animations and 3D perspective.")
           PY
-      - name: Commit optimized site
+      - name: Commit restored design
         run: |
           if git diff --quiet -- index.html; then
             echo "No changes required."
@@ -111,5 +75,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add index.html
-          git commit -m "Stabilize Android native scrolling and background layers"
+          git commit -m "Restore full mobile visual effects"
           git push origin HEAD:main
