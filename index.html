@@ -483,40 +483,6 @@ function scheduleResize(){clearTimeout(resizeTimer);resizeTimer=setTimeout(resiz
 function markMotion(){lastMotion=performance.now();}
 resize();addEventListener('resize',scheduleResize,{passive:true});addEventListener('orientationchange',scheduleResize,{passive:true});
 addEventListener('touchstart',markMotion,{passive:true});addEventListener('touchmove',markMotion,{passive:true});addEventListener('wheel',markMotion,{passive:true});addEventListener('scroll',markMotion,{passive:true});
-/* MOBILE IDLE SCROLL-JUMP RECOVERY */
-(() => {
-  let lastY = window.scrollY;
-  let lastScreen = currentScreen;
-  let lastInputAt = performance.now();
-  let recovering = false;
-  const noteInput = () => { lastInputAt = performance.now(); };
-  ['touchstart', 'touchmove', 'wheel', 'pointerdown', 'keydown'].forEach(type =>
-    addEventListener(type, noteInput, { passive: true })
-  );
-  addEventListener('scroll', () => {
-    const y = window.scrollY;
-    if (currentScreen !== lastScreen) {
-      lastScreen = currentScreen;
-      lastY = y;
-      return;
-    }
-    if (!recovering && lastY > 80 && y < 8 &&
-        performance.now() - lastInputAt > 900) {
-      recovering = true;
-      const targetY = lastY;
-      requestAnimationFrame(() => {
-        window.scrollTo({ top: targetY, left: 0, behavior: 'auto' });
-        requestAnimationFrame(() => {
-          recovering = false;
-          lastY = window.scrollY;
-        });
-      });
-      return;
-    }
-    lastY = y;
-  }, { passive: true });
-})();
-
 const chars='01アイウエオ#$%MUC';setInterval(()=>{if(document.hidden)return;const w=window.innerWidth,h=window.innerHeight;ctx.fillStyle='rgba(5,10,13,.12)';ctx.fillRect(0,0,w,h);ctx.fillStyle='#52f7df';ctx.font='12px monospace';drops.forEach((y,i)=>{ctx.fillText(chars[Math.random()*chars.length|0],i*22,y*18);if(y*18>h&&Math.random()>.978)drops[i]=0;drops[i]++;});},100);
 
 
