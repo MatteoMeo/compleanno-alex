@@ -5,7 +5,7 @@
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 :root{--bg:#050a0d;--panel:#0a1518;--line:#174044;--cyan:#52f7df;--green:#b5ff70;--red:#ff405b;--paper:#eee3cc;--muted:#789395}
-*{box-sizing:border-box}html{scroll-behavior:auto;overscroll-behavior-y:auto;overflow-anchor:auto}body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:hidden;overscroll-behavior-y:auto;overflow-anchor:auto}main,.screen{overflow-anchor:auto}
+*{box-sizing:border-box}html{scroll-behavior:auto;overscroll-behavior-y:auto;overflow-anchor:none}body{margin:0;background:var(--bg);color:#d8e8e5;font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:hidden;overscroll-behavior-y:auto;overflow-anchor:none}main,.screen{overflow-anchor:none}
 body:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:20;background:repeating-linear-gradient(to bottom,transparent 0,transparent 3px,rgba(0,0,0,.2) 4px);opacity:.45}
 #matrix{position:fixed;inset:0;width:100%;height:100%;opacity:.16;pointer-events:none}.noise{position:fixed;inset:0;pointer-events:none;z-index:18;box-shadow:inset 0 0 130px #000}
 header,.foot{position:relative;z-index:2;display:flex;justify-content:space-between;gap:12px;padding:18px 20px;font:10px 'Share Tech Mono',monospace;letter-spacing:.12em;color:var(--muted);border-bottom:1px solid #17404480}.logo{color:var(--cyan)}.status{display:flex;align-items:center;gap:7px}.led{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 12px var(--green);animation:pulse 1.5s infinite}
@@ -398,7 +398,13 @@ function show(id,opts={}){
  screens.forEach(s=>{s.classList.toggle('hidden',s.id!==id);if(s.id===id&&changing){s.style.animation='none';void s.offsetWidth;s.style.animation='';}});
  updateScreenNav();
  // Only reset the scroll when navigating to a different screen, never on a repeated activation.
- if(changing)window.scrollTo({top:0,behavior:'auto'});
+ if(changing){
+    // A screen change is an intentional return to the top.
+    allowIntentionalTopReset=true;
+    lastStableScrollY=0;
+    window.scrollTo({top:0,behavior:'auto'});
+    setTimeout(()=>{allowIntentionalTopReset=false;},500);
+  }
 }
 function goBack(){if(screenHistory.length>1){const previous=screenHistory.pop();currentScreen=previous;show(previous,{back:true});}else if(currentScreen!=='start'){currentScreen='start';show('start',{back:true});}}
 function updateScreenNav(){
@@ -525,5 +531,29 @@ const chars='01アイウエオ#$%MUC';setInterval(()=>{if(document.hidden)return
  });
  updateDashboard();
 })();
+
+
+  // MOBILE SCROLL-JUMP GUARD
+  // Prevent a browser/layout-driven teleport to the top while preserving normal scrolling.
+  let lastStableScrollY=window.scrollY||0;
+  let allowIntentionalTopReset=false;
+  let restoringUnexpectedJump=false;
+  window.addEventListener('scroll',()=>{
+    const currentY=window.scrollY||0;
+    if(currentY>2){
+      lastStableScrollY=currentY;
+      return;
+    }
+    if(lastStableScrollY>180 && !allowIntentionalTopReset && !restoringUnexpectedJump){
+      const restoreY=lastStableScrollY;
+      restoringUnexpectedJump=true;
+      requestAnimationFrame(()=>{
+        if((window.scrollY||0)<=2 && !allowIntentionalTopReset){
+          window.scrollTo({top:restoreY,left:0,behavior:'instant'});
+        }
+        requestAnimationFrame(()=>{restoringUnexpectedJump=false;});
+      });
+    }
+  },{passive:true});
 
 </script></body></html>
